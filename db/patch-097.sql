@@ -1,6 +1,6 @@
 /***Add new default AQ example layers (2 for PM, 2 for Ozone)***/
 /***Delete old example 12-km air quality surfaces ***/
-UPDATE "data".settings SET value_int=92 where "key"='version';
+UPDATE "data".settings SET value_int=97 where "key"='version';
 
 
 /*Add new default AQ example layers (2 for PM, 2 for Ozone)*/
