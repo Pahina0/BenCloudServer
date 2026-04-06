@@ -1,6 +1,44 @@
 /*** Create fake data for test grid with health incidence data and health impact functions ***/
 UPDATE "data".settings SET value_int=98 where "key"='version';
 
+-- Ensure basic data exists
+INSERT INTO data.race (id, name) VALUES (5, 'All') ON CONFLICT (id) DO NOTHING;
+INSERT INTO data.gender (id, name) VALUES (3, 'All') ON CONFLICT (id) DO NOTHING;
+INSERT INTO data.ethnicity (id, name) VALUES (3, 'All') ON CONFLICT (id) DO NOTHING;
+SELECT SETVAL('data.race_id_seq', (SELECT MAX(id) FROM data.race));
+SELECT SETVAL('data.gender_id_seq', (SELECT MAX(id) FROM data.gender));
+SELECT SETVAL('data.ethnicity_id_seq', (SELECT MAX(id) FROM data.ethnicity));
+
+INSERT INTO data.endpoint_group (id, name, share_scope) VALUES 
+(1, 'Incidence, Neurological', 1),
+(2, 'Incidence, Respiratory', 1),
+(10, 'Asthma', 1),
+(12, 'Mortality', 1),
+(13, 'School Loss Days', 1)
+ON CONFLICT (id) DO NOTHING;
+SELECT SETVAL('data.endpoint_group_id_seq', (SELECT MAX(id) FROM data.endpoint_group));
+
+INSERT INTO data.endpoint (id, endpoint_group_id, name, display_name) VALUES 
+(1, 1, 'Incidence, Neurological', 'Incidence, Neurological'),
+(2, 2, 'Incidence, Respiratory', 'Incidence, Respiratory'),
+(22, 10, 'Asthma', 'Asthma'),
+(36, 13, 'School Loss Days', 'School Loss Days'),
+(50, 12, 'Mortality, All Cause', 'Mortality, All Cause')
+ON CONFLICT (id) DO NOTHING;
+SELECT SETVAL('data.endpoint_id_seq', (SELECT MAX(id) FROM data.endpoint));
+
+INSERT INTO data.pollutant_metric (id, pollutant_id, name) VALUES 
+(11, 6, 'Daily Index'),
+(8, 4, 'D24HourMean')
+ON CONFLICT (id) DO NOTHING;
+SELECT SETVAL('data.pollutant_metric_id_seq', (SELECT MAX(id) FROM data.pollutant_metric));
+
+INSERT INTO data.timing_type (id, name) VALUES 
+(1, 'Annual'),
+(2, 'Daily')
+ON CONFLICT (id) DO NOTHING;
+SELECT SETVAL('data.timing_type_id_seq', (SELECT MAX(id) FROM data.timing_type));
+
 UPDATE data.grid_definition 
 SET is_admin_layer = 'Y',
     draw_priority = 1,
@@ -78,37 +116,46 @@ INSERT INTO data.health_impact_function (
     other_pollutants, qualifier, reference, start_age, end_age, function_text, 
     beta, dist_beta, 
     p1_beta, p2_beta, val_a, name_a, val_b, name_b, val_c, name_c, baseline_function_text, 
-    race_id, gender_id, ethnicity_id, start_day, end_day, share_scope
+    race_id, gender_id, ethnicity_id, start_day, end_day, share_scope, timing_id
 )
 VALUES 
-(10001, 100, 12, 50, 6, 11, NULL, 0, 'Test Author', 2025, 'Test Location', 
+(10001, 100, 12, 50, 6, 11, NULL, 1, 'Test Author', 2025, 'Test Location', 
  NULL, 'Test qualifier for mortality', 'Test reference', 25, 99, 
  '(1-(1/exp(BETA*DELTAQ)))*INCIDENCE*POPULATION', 
  0.01, 'Normal', 0.005, 0.0, 
  0.0, NULL, 0.0, NULL, 0.0, NULL, 'INCIDENCE*POPULATION', 
- 5, 3, 3, NULL, NULL, 1),
+ 5, 3, 3, NULL, NULL, 1, 1),
 
-(10002, 100, 2, 2, 6, 11, NULL, 0, 'Test Author', 2025, 'Test Location', 
+(10002, 100, 2, 2, 6, 11, NULL, 1, 'Test Author', 2025, 'Test Location', 
  NULL, 'Test qualifier for hospitalization', 'Test reference', 18, 99, 
  '(1-(1/((1-INCIDENCE)*exp(BETA*DELTAQ)+INCIDENCE)))*INCIDENCE*POPULATION*A', 
  0.02, 'Normal', 0.008, 0.0, 
  0.98, 'Survival rate', 0.0, NULL, 0.0, NULL, 'INCIDENCE*POPULATION*A', 
- 5, 3, 3, NULL, NULL, 1),
+ 5, 3, 3, NULL, NULL, 1, 1),
 
-(10003, 100, 10, 22, 6, 11, NULL, 0, 'Test Author', 2025, 'Test Location', 
+(10003, 100, 10, 22, 6, 11, NULL, 1, 'Test Author', 2025, 'Test Location', 
  NULL, 'Test qualifier for asthma', 'Test reference', 0, 18, 
  '(1-(1/exp(BETA*DELTAQ)))*INCIDENCE*POPULATION', 
  0.015, 'Normal', 0.007, 0.0, 
  0.0, NULL, 0.0, NULL, 0.0, NULL, 'INCIDENCE*POPULATION', 
- 5, 3, 3, NULL, NULL, 1),
+ 5, 3, 3, NULL, NULL, 1, 1),
 
-(10004, 100, 13, 36, 4, 8, NULL, 0, 'Test Author', 2025, 'Test Location', 
+(10004, 100, 13, 36, 4, 8, NULL, 1, 'Test Author', 2025, 'Test Location', 
  NULL, 'Test qualifier for ozone', 'Test reference', 5, 18, 
  '(1-(1/exp(BETA*DELTAQ)))*INCIDENCE*POPULATION*A', 
  0.008, 'Normal', 0.004, 0.0, 
  0.39, 'School days scalar', 0.945, 'Population at-risk', 0.0, NULL, 'INCIDENCE*POPULATION*A', 
- 5, 3, 3, 120, 272, 1)
-ON CONFLICT (id) DO NOTHING;
+ 5, 3, 3, 120, 272, 1, 1)
+ON CONFLICT (id) DO UPDATE SET
+    health_impact_function_dataset_id = EXCLUDED.health_impact_function_dataset_id,
+    endpoint_group_id = EXCLUDED.endpoint_group_id,
+    endpoint_id = EXCLUDED.endpoint_id,
+    pollutant_id = EXCLUDED.pollutant_id,
+    metric_id = EXCLUDED.metric_id,
+    author = EXCLUDED.author,
+    function_text = EXCLUDED.function_text,
+    share_scope = EXCLUDED.share_scope,
+    timing_id = EXCLUDED.timing_id;
 
 SELECT SETVAL('data.health_impact_function_id_seq', (SELECT MAX(id) FROM data.health_impact_function));
 
