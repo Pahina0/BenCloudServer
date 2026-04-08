@@ -26,6 +26,10 @@ import gov.epa.bencloud.server.database.jooq.data.tables.records.GetPopulationRe
 import spark.Request;
 import spark.Response;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+
 /*
  * Methods related to population data
  */
@@ -382,6 +386,42 @@ public class PopulationApi {
 			return CoreApi.getErrorResponse(request, response, 500, e.getMessage() + ": " + e.getStackTrace());
 		}
 
+	}
+
+	/**
+	 * Paged-style payload for datacenter UI: total count plus one row per population dataset with distinct years.
+	 * Local dev: {@code DSL.noCondition()} (no extra filters).
+	 */
+	public static Object getAllPopulationDatasetsInfo(Request request, Response response, Optional<UserProfile> userProfile) {
+		try {
+			Result<Record4<String, Integer, Integer, Short[]>> popRecords = DSL.using(JooqUtil.getJooqConfiguration())
+					.select(POPULATION_DATASET.NAME,
+							POPULATION_DATASET.ID,
+							POPULATION_DATASET.GRID_DEFINITION_ID,
+							DSL.arrayAggDistinct(T_POP_DATASET_YEAR.POP_YEAR).orderBy(T_POP_DATASET_YEAR.POP_YEAR).as("years"))
+					.from(POPULATION_DATASET)
+					.join(T_POP_DATASET_YEAR).on(POPULATION_DATASET.ID.eq(T_POP_DATASET_YEAR.POP_DATASET_ID))
+					.where(DSL.noCondition())
+					.groupBy(POPULATION_DATASET.NAME,
+							POPULATION_DATASET.ID,
+							POPULATION_DATASET.GRID_DEFINITION_ID)
+					.orderBy(POPULATION_DATASET.NAME)
+					.fetch();
+
+			int filteredRecordsCount = popRecords.size();
+
+			ObjectMapper mapper = new ObjectMapper();
+			ObjectNode data = mapper.createObjectNode();
+			data.put("filteredRecordsCount", filteredRecordsCount);
+			data.set("records", mapper.valueToTree(popRecords.intoMaps()));
+
+			response.type("application/json");
+			return mapper.writeValueAsString(data);
+		} catch (JsonProcessingException e) {
+			return CoreApi.getErrorResponse(request, response, 500, e.getMessage());
+		} catch (Exception e) {
+			return CoreApi.getErrorResponse(request, response, 500, e.getMessage() + ": " + e.getStackTrace());
+		}
 	}
 	
 	/**

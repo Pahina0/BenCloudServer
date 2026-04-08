@@ -196,6 +196,13 @@ public class ApiRoutes extends RoutesBase {
 		});
 
 		/*
+		 * GET population datasets with filteredRecordsCount + records (datacenter / pagination clients)
+		 */
+		service.get(apiPrefix + "/population-datasets-info", (request, response) -> {
+			return PopulationApi.getAllPopulationDatasetsInfo(request, response, getUserProfile(request, response));
+		});
+
+		/*
 		 * GET array of all health effect group definitions
 		 */
 		service.get(apiPrefix + "/health-effect-groups", (request, response) -> {
