@@ -26,7 +26,6 @@ import org.geotools.api.data.DataStoreFinder;
 import org.geotools.api.feature.simple.SimpleFeatureType;
 import org.geotools.api.feature.type.AttributeDescriptor;
 import org.geotools.util.URLs;
-import org.jooq.Condition;
 import org.jooq.DSLContext;
 import org.jooq.JSONFormat;
 import org.jooq.Result;
@@ -71,20 +70,11 @@ public class GridDefinitionApi {
 	 * @return a JSON representation of all grid definitions, ordered by grid definition name.
 	 */
 	public static Object getAllGridDefinitions(Request request, Response response, Optional<UserProfile> userProfile) {
-		String userId = userProfile.get().getId();
-		boolean showAll = ParameterUtil.getParameterValueAsBoolean(request.raw().getParameter("showAll"), false);
-
-		Condition filterCondition = DSL.trueCondition();
-
-		// Skip the following for an admin user that wants to see all data
-		if(!showAll || !CoreApi.isAdmin(userProfile)) {
-			filterCondition = filterCondition.and(GRID_DEFINITION.SHARE_SCOPE.eq(Constants.SHARING_ALL).or(GRID_DEFINITION.USER_ID.eq(userId)));
-		}
-
+		// Local dev: no SHARE_SCOPE / USER_ID filtering — return all grid definitions
 		Result<Record> gridRecords = DSL.using(JooqUtil.getJooqConfiguration())
 				.select(GRID_DEFINITION.asterisk())
 				.from(GRID_DEFINITION)
-				.where(filterCondition)
+				.where(DSL.noCondition())
 				.orderBy(GRID_DEFINITION.NAME)
 				.fetch();
 		//log.debug("Requested all grid definitions: " + (userProfile.isPresent() ? userProfile.get().getId() : "Anonymous"));
@@ -100,20 +90,11 @@ public class GridDefinitionApi {
 	 * @return a JSON representation of all grid definitions, ordered by grid definition name. includes row and col counts
 	 */
 	public static Object getAllGridDefinitionsInfo(Request request, Response response, Optional<UserProfile> userProfile) {
-		String userId = userProfile.get().getId();
-		boolean showAll = ParameterUtil.getParameterValueAsBoolean(request.raw().getParameter("showAll"), false);
-
-		Condition filterCondition = GRID_DEFINITION.ARCHIVE.eq((short)0);
-
-		// Skip the following for an admin user that wants to see all data
-		if(!showAll || !CoreApi.isAdmin(userProfile)) {
-			filterCondition = filterCondition.and(GRID_DEFINITION.SHARE_SCOPE.eq(Constants.SHARING_ALL).or(GRID_DEFINITION.USER_ID.eq(userId)));
-		}
-
+		// Local dev: no ARCHIVE / SHARE_SCOPE / USER_ID filtering — return all grid definitions
 		Result<Record> gridRecords = DSL.using(JooqUtil.getJooqConfiguration())
 				.select(GRID_DEFINITION.asterisk(), GRID_DEFINITION.COL_COUNT, GRID_DEFINITION.ROW_COUNT)
 				.from(GRID_DEFINITION)
-				.where(filterCondition)
+				.where(DSL.noCondition())
 				.orderBy(GRID_DEFINITION.NAME)
 				.fetch();
 		//log.debug("Requested all grid definitions: " + (userProfile.isPresent() ? userProfile.get().getId() : "Anonymous"));
