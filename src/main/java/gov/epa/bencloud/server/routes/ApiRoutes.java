@@ -188,19 +188,26 @@ public class ApiRoutes extends RoutesBase {
 
 		});
 		
-		/*
-		 * GET array of all population dataset definitions
-		 */
-		service.get(apiPrefix + "/population", (request, response) -> {
-			return PopulationApi.getAllPopulationDatasets(request, response, getUserProfile(request, response));
-		});
+/*
+* GET array of all population dataset definitions
+*/
+service.get(apiPrefix + "/population", (request, response) -> {
+return PopulationApi.getAllPopulationDatasets(request, response, getUserProfile(request, response));
+});
 
-		/*
-		 * GET population datasets with filteredRecordsCount + records (datacenter / pagination clients)
-		 */
-		service.get(apiPrefix + "/population-datasets-info", (request, response) -> {
-			return PopulationApi.getAllPopulationDatasetsInfo(request, response, getUserProfile(request, response));
-		});
+/*
+* GET population datasets with filteredRecordsCount + records (datacenter / pagination clients)
+*/
+service.get(apiPrefix + "/population-datasets-info", (request, response) -> {
+return PopulationApi.getAllPopulationDatasetsInfo(request, response, getUserProfile(request, response));
+});
+
+/*
+* POST a population dataset
+*/
+service.post(apiPrefix + "/population-data", (request, response) -> {
+return PopulationApi.postPopulationData(request, response, getUserProfile(request, response));
+});
 
 		/*
 		 * GET array of all health effect group definitions

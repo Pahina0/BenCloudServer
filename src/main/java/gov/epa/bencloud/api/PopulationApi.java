@@ -2,9 +2,17 @@ package gov.epa.bencloud.api;
 
 import static gov.epa.bencloud.server.database.jooq.data.Tables.*;
 
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.math.BigInteger;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+
+import javax.servlet.MultipartConfigElement;
+import javax.servlet.http.Part;
 
 import org.jooq.DSLContext;
 import org.jooq.JSONFormat;
@@ -15,20 +23,27 @@ import org.jooq.Result;
 import org.jooq.JSONFormat.RecordFormat;
 import org.jooq.impl.DSL;
 import org.pac4j.core.profile.UserProfile;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.opencsv.CSVReader;
 
 import gov.epa.bencloud.api.model.ExposureConfig;
 import gov.epa.bencloud.api.model.ExposureTaskConfig;
 import gov.epa.bencloud.api.model.HIFConfig;
 import gov.epa.bencloud.api.model.HIFTaskConfig;
+import gov.epa.bencloud.api.model.ValidationMessage;
+import gov.epa.bencloud.api.util.ApiUtil;
 import gov.epa.bencloud.server.database.JooqUtil;
 import gov.epa.bencloud.server.database.jooq.data.Routines;
 import gov.epa.bencloud.server.database.jooq.data.tables.records.GetPopulationRecord;
+import gov.epa.bencloud.server.database.jooq.data.tables.records.PopulationDatasetRecord;
+import gov.epa.bencloud.server.database.jooq.data.tables.records.PopulationEntryRecord;
 import spark.Request;
 import spark.Response;
-
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 
 /*
  * Methods related to population data
@@ -466,15 +481,282 @@ public class PopulationApi {
 	 * @param id 
 	 * @return the population dataset's grid definition id
 	 */
-	public static Integer getPopulationGridDefinitionId(Integer id) {
+public static Integer getPopulationGridDefinitionId(Integer id) {
 
-		Record1<Integer> record = DSL.using(JooqUtil.getJooqConfiguration())
-				.select(POPULATION_DATASET.GRID_DEFINITION_ID)
-				.from(POPULATION_DATASET)
-				.where(POPULATION_DATASET.ID.eq(id))
-				.fetchOne();
-		
-		return record.value1();
-	}
-	
+Record1<Integer> record = DSL.using(JooqUtil.getJooqConfiguration())
+.select(POPULATION_DATASET.GRID_DEFINITION_ID)
+.from(POPULATION_DATASET)
+.where(POPULATION_DATASET.ID.eq(id))
+.fetchOne();
+
+return record.value1();
+}
+
+/**
+* POST endpoint for importing population data from CSV
+* Expected CSV columns: Race,Gender,AgeRange,Ethnicity,Year,Row,Column,Population
+*/
+public static Object postPopulationData(Request request, Response response, Optional<UserProfile> userProfile) {
+request.attribute("org.eclipse.jetty.multipartConfig", new MultipartConfigElement("/temp"));
+
+String populationName;
+Integer gridId;
+Integer popConfigId;
+Integer popYear;
+
+ValidationMessage validationMsg = new ValidationMessage();
+
+try {
+populationName = ApiUtil.getMultipartFormParameterAsString(request, "name");
+gridId = ApiUtil.getMultipartFormParameterAsInteger(request, "gridId");
+popConfigId = ApiUtil.getMultipartFormParameterAsInteger(request, "popConfigId");
+popYear = ApiUtil.getMultipartFormParameterAsInteger(request, "popYear");
+} catch (NumberFormatException e) {
+e.printStackTrace();
+return CoreApi.getErrorResponseInvalidId(request, response);
+} catch (IllegalArgumentException e) {
+e.printStackTrace();
+return CoreApi.getErrorResponseInvalidId(request, response);
+}
+
+if (populationName == null || gridId == null || popConfigId == null || popYear == null) {
+response.type("application/json");
+validationMsg.success = false;
+validationMsg.messages.add(new ValidationMessage.Message("error",
+"Missing required parameters: name, gridId, popConfigId, popYear."));
+return CoreApi.transformValMsgToJSON(validationMsg);
+}
+
+String userId = userProfile.get().getId();
+
+// Check for duplicate name
+List<String> existingNames = DSL.using(JooqUtil.getJooqConfiguration())
+.select(POPULATION_DATASET.NAME)
+.from(POPULATION_DATASET)
+.where(POPULATION_DATASET.NAME.eq(populationName))
+.fetch(POPULATION_DATASET.NAME);
+
+if (existingNames.contains(populationName)) {
+validationMsg.success = false;
+validationMsg.messages.add(new ValidationMessage.Message("error",
+"A population dataset named " + populationName + " already exists."));
+response.type("application/json");
+return CoreApi.transformValMsgToJSON(validationMsg);
+}
+
+// Get next dataset ID
+Integer datasetId = DSL.using(JooqUtil.getJooqConfiguration())
+.select(DSL.max(POPULATION_DATASET.ID))
+.from(POPULATION_DATASET)
+.fetchOne(DSL.max(POPULATION_DATASET.ID));
+if (datasetId == null) {
+datasetId = 1;
+} else {
+datasetId++;
+}
+
+// Mapping lookups
+Map<String, Integer> raceMap = new HashMap<>();
+Map<String, Integer> genderMap = new HashMap<>();
+Map<String, Integer> ethnicityMap = new HashMap<>();
+Map<String, Integer> ageRangeMap = new HashMap<>();
+
+// Load reference data
+DSL.using(JooqUtil.getJooqConfiguration())
+.select(RACE.ID, RACE.NAME)
+.from(RACE)
+.fetch()
+.forEach(r -> raceMap.put(r.value2().toUpperCase(), r.value1()));
+
+DSL.using(JooqUtil.getJooqConfiguration())
+.select(GENDER.ID, GENDER.NAME)
+.from(GENDER)
+.fetch()
+.forEach(g -> genderMap.put(g.value2().toUpperCase(), g.value1()));
+
+DSL.using(JooqUtil.getJooqConfiguration())
+.select(ETHNICITY.ID, ETHNICITY.NAME)
+.from(ETHNICITY)
+.fetch()
+.forEach(e -> ethnicityMap.put(e.value2().toUpperCase(), e.value1()));
+
+DSL.using(JooqUtil.getJooqConfiguration())
+.select(AGE_RANGE.ID, AGE_RANGE.NAME)
+.from(AGE_RANGE)
+.fetch()
+.forEach(a -> ageRangeMap.put(a.value2().toUpperCase(), a.value1()));
+
+// Create population dataset
+PopulationDatasetRecord popDataset = DSL.using(JooqUtil.getJooqConfiguration())
+.newRecord(POPULATION_DATASET);
+popDataset.setId(datasetId);
+popDataset.setName(populationName);
+popDataset.setPopConfigId(popConfigId);
+popDataset.setGridDefinitionId(gridId);
+popDataset.setApplyGrowth(0);
+popDataset.store();
+
+// Process CSV file
+try (InputStream is = request.raw().getPart("file").getInputStream();
+CSVReader csvReader = new CSVReader(new InputStreamReader(is))) {
+
+String[] record;
+String[] headers = csvReader.readNext();
+
+// Column indices
+int raceIdx = -1, genderIdx = -1, ageIdx = -1, ethIdx = -1;
+int yearIdx = -1, rowIdx = -1, colIdx = -1, popIdx = -1;
+
+for (int i = 0; i < headers.length; i++) {
+switch (headers[i].toUpperCase()) {
+case "RACE": raceIdx = i; break;
+case "GENDER": genderIdx = i; break;
+case "AGERANGE": ageIdx = i; break;
+case "ETHNICITY": ethIdx = i; break;
+case "YEAR": yearIdx = i; break;
+case "ROW": rowIdx = i; break;
+case "COLUMN": colIdx = i; break;
+case "POPULATION": popIdx = i; break;
+}
+}
+
+if (raceIdx == -1 || genderIdx == -1 || ageIdx == -1 || ethIdx == -1 ||
+rowIdx == -1 || colIdx == -1 || popIdx == -1) {
+validationMsg.success = false;
+validationMsg.messages.add(new ValidationMessage.Message("error",
+"CSV must have columns: Race, Gender, AgeRange, Ethnicity, Row, Column, Population"));
+response.type("application/json");
+return CoreApi.transformValMsgToJSON(validationMsg);
+}
+
+// Track entries to avoid duplicates
+Map<String, Integer> entryMap = new HashMap<>();
+int entryId = DSL.using(JooqUtil.getJooqConfiguration())
+.select(DSL.coalesce(DSL.max(POPULATION_ENTRY.ID), 0))
+.from(POPULATION_ENTRY)
+.fetchOne(DSL.coalesce(DSL.max(POPULATION_ENTRY.ID), 0)) + 1;
+
+List<PopulationEntryRecord> entries = new ArrayList<>();
+List<Object[]> values = new ArrayList<>();
+int batchSize = 1000;
+int rowCount = 0;
+
+while ((record = csvReader.readNext()) != null) {
+if (record.length < 8) continue;
+
+String race = record[raceIdx].toUpperCase();
+String gender = record[genderIdx].toUpperCase();
+String ageRange = record[ageIdx].toUpperCase();
+String ethnicity = record[ethIdx].toUpperCase();
+int row = Integer.parseInt(record[rowIdx]);
+int col = Integer.parseInt(record[colIdx]);
+double population = Double.parseDouble(record[popIdx]);
+
+Integer raceId = raceMap.get(race);
+Integer genderId = genderMap.get(gender);
+Integer ageId = ageRangeMap.get(ageRange);
+Integer ethId = ethnicityMap.get(ethnicity);
+
+if (raceId == null || genderId == null || ageId == null || ethId == null) {
+continue;
+}
+
+String entryKey = datasetId + "-" + raceId + "-" + ethId + "-" + genderId + "-" + ageId + "-" + popYear;
+Integer currentEntryId;
+
+if (!entryMap.containsKey(entryKey)) {
+currentEntryId = entryId++;
+entryMap.put(entryKey, currentEntryId);
+
+PopulationEntryRecord entry = DSL.using(JooqUtil.getJooqConfiguration())
+.newRecord(POPULATION_ENTRY);
+entry.setId(currentEntryId);
+entry.setPopDatasetId(datasetId);
+entry.setRaceId(raceId);
+entry.setEthnicityId(ethId);
+entry.setGenderId(genderId);
+entry.setAgeRangeId(ageId);
+entry.setPopYear(popYear.shortValue());
+entries.add(entry);
+} else {
+currentEntryId = entryMap.get(entryKey);
+}
+
+long gridCellId = ((long) row << 32) | (col & 0xFFFFFFFFL);
+values.add(new Object[]{currentEntryId, gridCellId, population});
+
+if (values.size() >= batchSize) {
+DSL.using(JooqUtil.getJooqConfiguration())
+.batchInsert(entries)
+.execute();
+entries.clear();
+
+for (Object[] val : values) {
+DSL.using(JooqUtil.getJooqConfiguration())
+.insertInto(POPULATION_VALUE)
+.set(POPULATION_VALUE.POP_ENTRY_ID, (Integer) val[0])
+.set(POPULATION_VALUE.GRID_CELL_ID, (Long) val[1])
+.set(POPULATION_VALUE.POP_VALUE, (Double) val[2])
+.onConflictDoNothing()
+.execute();
+}
+values.clear();
+rowCount += batchSize;
+}
+}
+
+// Insert remaining entries and values
+if (!entries.isEmpty()) {
+DSL.using(JooqUtil.getJooqConfiguration())
+.batchInsert(entries)
+.execute();
+}
+
+if (!values.isEmpty()) {
+for (Object[] val : values) {
+DSL.using(JooqUtil.getJooqConfiguration())
+.insertInto(POPULATION_VALUE)
+.set(POPULATION_VALUE.POP_ENTRY_ID, (Integer) val[0])
+.set(POPULATION_VALUE.GRID_CELL_ID, (Long) val[1])
+.set(POPULATION_VALUE.POP_VALUE, (Double) val[2])
+.onConflictDoNothing()
+.execute();
+}
+}
+
+// Update sequences
+DSL.using(JooqUtil.getJooqConfiguration())
+.alterSequenceIfExists(DSL.sequence("data.population_dataset_id_seq"))
+.restartWith(BigInteger.valueOf(datasetId + 1))
+.execute();
+
+DSL.using(JooqUtil.getJooqConfiguration())
+.alterSequenceIfExists(DSL.sequence("data.population_entry_id_seq"))
+.restartWith(BigInteger.valueOf(entryId))
+.execute();
+
+// Insert year record
+DSL.using(JooqUtil.getJooqConfiguration())
+.insertInto(T_POP_DATASET_YEAR)
+.set(T_POP_DATASET_YEAR.POP_DATASET_ID, datasetId)
+.set(T_POP_DATASET_YEAR.POP_YEAR, popYear.shortValue())
+.onConflictDoNothing()
+.execute();
+
+validationMsg.success = true;
+validationMsg.messages.add(new ValidationMessage.Message("info",
+"Population dataset '" + populationName + "' imported successfully with " + rowCount + " records."));
+response.type("application/json");
+return CoreApi.transformValMsgToJSON(validationMsg);
+
+} catch (Exception e) {
+e.printStackTrace();
+validationMsg.success = false;
+validationMsg.messages.add(new ValidationMessage.Message("error",
+"Error importing population data: " + e.getMessage()));
+response.type("application/json");
+return CoreApi.transformValMsgToJSON(validationMsg);
+}
+}
+
 }
