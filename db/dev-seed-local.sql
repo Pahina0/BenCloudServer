@@ -94,6 +94,76 @@ ON CONFLICT DO NOTHING;
 
 REFRESH MATERIALIZED VIEW data.mat_pop_dataset_base_year;
 
+-- 4b) Make the built-in 2010 county dataset (popId=100) runnable in local dev.
+-- Some DB snapshots ship a 2010 county population dataset but don't include complete grid metadata
+-- (e.g. missing grid_definition rows), which can make crosswalk generation crash.
+-- For local dev robustness we:
+-- - Ensure a base_pop_year exists for 2010 so data.get_population() won't throw
+-- - Pre-create a simple crosswalk 73 <-> 69 so tasks won't attempt runtime area-weight generation
+--
+-- NOTE: This crosswalk is DEV ONLY and not spatially meaningful (it maps all county cells onto one AQ cell).
+
+INSERT INTO data.population_growth(base_pop_year,pop_year,race_id,gender_id,ethnicity_id,age_range_id,grid_cell_id,growth_value)
+VALUES (2010,2010,5,3,3,1,1,1.0)
+ON CONFLICT DO NOTHING;
+
+REFRESH MATERIALIZED VIEW data.mat_pop_dataset_base_year;
+
+-- Create crosswalk_dataset rows if missing
+INSERT INTO data.crosswalk_dataset (source_grid_id, target_grid_id, created_date)
+SELECT v.source_grid_id, v.target_grid_id, now()
+FROM (VALUES (73,69),(69,73)) v(source_grid_id, target_grid_id)
+WHERE NOT EXISTS (
+  SELECT 1 FROM data.crosswalk_dataset d
+  WHERE d.source_grid_id=v.source_grid_id AND d.target_grid_id=v.target_grid_id
+);
+
+DO $$
+DECLARE
+  cw_73_69 integer;
+  cw_69_73 integer;
+  target_cell bigint;
+BEGIN
+  -- If popId=100 isn't present in this DB, skip quietly
+  IF NOT EXISTS (SELECT 1 FROM data.population_dataset WHERE id=100) THEN
+    RETURN;
+  END IF;
+
+  SELECT id INTO cw_73_69 FROM data.crosswalk_dataset WHERE source_grid_id=73 AND target_grid_id=69 LIMIT 1;
+  SELECT id INTO cw_69_73 FROM data.crosswalk_dataset WHERE source_grid_id=69 AND target_grid_id=73 LIMIT 1;
+
+  SELECT MIN(c.grid_cell_id) INTO target_cell
+  FROM data.air_quality_cell c
+  JOIN data.air_quality_layer l ON l.id=c.air_quality_layer_id
+  WHERE l.grid_definition_id=69;
+
+  IF target_cell IS NULL THEN
+    RETURN;
+  END IF;
+
+  -- 73 -> 69
+  INSERT INTO data.crosswalk_entry(crosswalk_id, source_grid_cell_id, target_grid_cell_id, percentage)
+  SELECT cw_73_69, v.grid_cell_id, target_cell, 1.0
+  FROM (
+    SELECT DISTINCT pv.grid_cell_id
+    FROM data.population_value pv
+    JOIN data.population_entry pe ON pe.id=pv.pop_entry_id
+    WHERE pe.pop_dataset_id=100
+  ) v
+  ON CONFLICT DO NOTHING;
+
+  -- 69 -> 73
+  INSERT INTO data.crosswalk_entry(crosswalk_id, source_grid_cell_id, target_grid_cell_id, percentage)
+  SELECT cw_69_73, target_cell, v.grid_cell_id, 1.0
+  FROM (
+    SELECT DISTINCT pv.grid_cell_id
+    FROM data.population_value pv
+    JOIN data.population_entry pe ON pe.id=pv.pop_entry_id
+    WHERE pe.pop_dataset_id=100
+  ) v
+  ON CONFLICT DO NOTHING;
+END $$;
+
 -- 5) Minimal crosswalk 69 <-> 18 (identity mapping for the grid_cell_ids we actually use)
 WITH existing AS (
   SELECT id, source_grid_id, target_grid_id
