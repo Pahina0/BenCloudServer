@@ -87,6 +87,7 @@ public class BenCloudServer {
 		        });
 
 		final Config config = new BenCloudConfigFactory().build();
+		final boolean authEnabled = !"false".equalsIgnoreCase(ApplicationUtil.getProperty("auth.enabled"));
 
 		benCloudService.before((request, response) -> {
 			response.header("Access-Control-Allow-Origin", "*");
@@ -98,7 +99,7 @@ public class BenCloudServer {
 			}
 
 			//Exclude OPTIONS calls from security filter
-			if(!request.requestMethod().equalsIgnoreCase(HttpConstants.HTTP_METHOD.OPTIONS.name())) {
+			if (authEnabled && !request.requestMethod().equalsIgnoreCase(HttpConstants.HTTP_METHOD.OPTIONS.name())) {
 				new SecurityFilter(config, "HeaderClient", "user").handle(request, response);
 			}
 		});

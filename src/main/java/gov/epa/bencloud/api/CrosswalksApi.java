@@ -189,8 +189,30 @@ public class CrosswalksApi {
 		List<Integer> gridSourceIds2010 = Arrays.asList(18, 19, 20);
 		List<Integer> gridTargetIds2010 = Arrays.asList(18, 19);
 		List<Integer> gridIds2020 = Arrays.asList(68, 69, 70, 83);
-		if ((gridSourceIds2010.contains(sourceId) && gridIds2020.contains(targetId)) || (gridIds2020.contains(sourceId) && gridTargetIds2010.contains(targetId))) {
-			log.error("Do not create crosswalks for certain grid definitions");
+		// Some 2010<->2020 conversions are intentionally not auto-generated.
+		// However, if a crosswalk already exists (precomputed/seeded), we should still allow it.
+		if ((gridSourceIds2010.contains(sourceId) && gridIds2020.contains(targetId))
+				|| (gridIds2020.contains(sourceId) && gridTargetIds2010.contains(targetId))) {
+			DSLContext dslContext = DSL.using(JooqUtil.getJooqConfiguration());
+			Record2<Integer,LocalDateTime> cwForward = dslContext
+					.select(CROSSWALK_DATASET.ID, CROSSWALK_DATASET.CREATED_DATE)
+					.from(CROSSWALK_DATASET)
+					.where(CROSSWALK_DATASET.SOURCE_GRID_ID.eq(sourceId).and(CROSSWALK_DATASET.TARGET_GRID_ID.eq(targetId)))
+					.fetchAny();
+			Record2<Integer,LocalDateTime> cwReverse = dslContext
+					.select(CROSSWALK_DATASET.ID, CROSSWALK_DATASET.CREATED_DATE)
+					.from(CROSSWALK_DATASET)
+					.where(CROSSWALK_DATASET.SOURCE_GRID_ID.eq(targetId).and(CROSSWALK_DATASET.TARGET_GRID_ID.eq(sourceId)))
+					.fetchAny();
+
+			boolean hasForward = cwForward != null && cwForward.getValue(CROSSWALK_DATASET.ID) != null;
+			boolean hasReverse = cwReverse != null && cwReverse.getValue(CROSSWALK_DATASET.ID) != null;
+			if (hasForward && hasReverse) {
+				log.debug("Restricted crosswalk pair exists (seeded). Allowing use for " + sourceId + " <-> " + targetId);
+				return true;
+			}
+
+			log.error("Do not auto-create crosswalks for certain grid definitions (" + sourceId + " <-> " + targetId + ")");
 			return false;
 		}
 		

@@ -332,13 +332,27 @@ public class ApiUtil {
 	 */
 	public static void cancelQueriesByUuid(String uuid) { 
 		try {
-			Result<Record1<Integer>> pidRecords = DSL.using(JooqUtil.getJooqConfiguration("BenMAP JDBC"))
-			.select(DSL.field("pid", Integer.class))
-			.from("pg_stat_activity")
-			.where(DSL.field("application_name").eq(uuid))
-			.and(DSL.field("leader_pid").isNull()) //only cancel leader queries
-			.and(DSL.field("state").eq("active"))
-			.fetch();
+			DSLContext ctx = DSL.using(JooqUtil.getJooqConfiguration("BenMAP JDBC"));
+
+			Result<Record1<Integer>> pidRecords;
+			try {
+				// Newer Postgres versions have leader_pid (parallel query leader).
+				pidRecords = ctx
+						.select(DSL.field("pid", Integer.class))
+						.from("pg_stat_activity")
+						.where(DSL.field("application_name").eq(uuid))
+						.and(DSL.field("leader_pid").isNull()) // only cancel leader queries
+						.and(DSL.field("state").eq("active"))
+						.fetch();
+			} catch (org.jooq.exception.DataAccessException dae) {
+				// Older Postgres versions don't expose leader_pid; fall back to cancelling active queries by application_name.
+				pidRecords = ctx
+						.select(DSL.field("pid", Integer.class))
+						.from("pg_stat_activity")
+						.where(DSL.field("application_name").eq(uuid))
+						.and(DSL.field("state").eq("active"))
+						.fetch();
+			}
 
 			for (Record1<Integer> record : pidRecords) {
 				Integer pid = record.value1();

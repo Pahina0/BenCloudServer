@@ -8,10 +8,13 @@ import java.util.Optional;
 import org.pac4j.core.profile.ProfileManager;
 import org.pac4j.core.profile.UserProfile;
 import org.pac4j.jee.context.session.JEESessionStore;
+import org.pac4j.core.profile.CommonProfile;
 import org.pac4j.sparkjava.SparkWebContext;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 
+import gov.epa.bencloud.Constants;
+import gov.epa.bencloud.server.util.ApplicationUtil;
 import spark.Request;
 import spark.Response;
 
@@ -19,6 +22,12 @@ public class RoutesBase {
     protected static ObjectMapper objectMapper = new ObjectMapper();
     
 	protected Optional<UserProfile> getUserProfile(Request request, Response response) {
+			if ("false".equalsIgnoreCase(ApplicationUtil.getProperty("auth.enabled"))) {
+				CommonProfile p = new CommonProfile();
+				p.setId("LOCAL_DEV");
+				p.addRole(Constants.ROLE_ADMIN);
+				return Optional.of(p);
+			}
 			final SparkWebContext context = new SparkWebContext(request, response);
 			final ProfileManager manager = new ProfileManager(context, JEESessionStore.INSTANCE);
 			return manager.getProfile();
