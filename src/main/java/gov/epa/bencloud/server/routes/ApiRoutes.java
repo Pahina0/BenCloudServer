@@ -43,6 +43,15 @@ public class ApiRoutes extends RoutesBase {
 			response.type("application/json");
 			return "{\"message\":\"Internal server error\"}";
 		});
+
+		/*
+		 * POST synchronous exposure analysis (single request returns results)
+		 * Body: ExposureTaskConfig JSON
+		 * Query params (optional): gridId, page, rowsPerPage, efId
+		 */
+		service.post(apiPrefix + "/analysis/exposure", (request, response) -> {
+			return AnalysisApi.postExposureAnalysisSync(request, response, getUserProfile(request, response));
+		});
 		
 		/*
 		 * GET array of all grid definitions
@@ -555,6 +564,13 @@ return PopulationApi.postPopulationData(request, response, getUserProfile(reques
 			}
 
 			return null;
+		});
+
+		/*
+		 * GET exposure result dataset metadata for UI
+		 */
+		service.get(apiPrefix + "/exposure-result-datasets/:id/info", (request, response) -> {
+			return ExposureApi.getExposureResultDatasetInfo(request, response, getUserProfile(request, response));
 		});
 		
 		/*

@@ -59,6 +59,7 @@ import spark.Response;
  */
 public class ExposureApi {
 	private static final Logger log = LoggerFactory.getLogger(ExposureApi.class);
+	private static final ObjectMapper objectMapper = new ObjectMapper();
 
 	/**
 	 * 
@@ -313,6 +314,78 @@ public class ExposureApi {
 			response.status(400);
 			return;
 		}
+	}
+
+	/**
+	 * Returns metadata about an exposure result dataset for UI display.
+	 * Supports either numeric dataset id or task UUID (36 chars).
+	 */
+	public static Object getExposureResultDatasetInfo(Request request, Response response, Optional<UserProfile> userProfile) {
+		String idParam;
+		Integer id;
+		try {
+			idParam = String.valueOf(request.params("id"));
+			id = idParam.length() == 36 ? ExposureApi.getExposureResultDatasetId(idParam) : Integer.valueOf(idParam);
+		} catch (Exception e) {
+			return CoreApi.getErrorResponseInvalidId(request, response);
+		}
+
+		if (id == null) {
+			return CoreApi.getErrorResponseNotFound(request, response);
+		}
+
+		DSLContext create = DSL.using(JooqUtil.getJooqConfiguration());
+		ExposureResultDatasetRecord ds = create.selectFrom(EXPOSURE_RESULT_DATASET)
+				.where(EXPOSURE_RESULT_DATASET.ID.eq(id))
+				.fetchOne();
+		if (ds == null) {
+			return CoreApi.getErrorResponseNotFound(request, response);
+		}
+
+		// Baseline AQ info: pollutant + metric + AQ grid name
+		Record7<Integer, String, Integer, Integer, String, Integer, Integer> baseline = create
+				.select(AIR_QUALITY_LAYER.ID,
+						AIR_QUALITY_LAYER.NAME,
+						AIR_QUALITY_LAYER.POLLUTANT_ID,
+						AIR_QUALITY_LAYER.GRID_DEFINITION_ID,
+						GRID_DEFINITION.NAME.as("aq_grid_definition_name"),
+						AIR_QUALITY_LAYER_METRICS.METRIC_ID,
+						POLLUTANT_METRIC.POLLUTANT_ID.as("metric_pollutant_id"))
+				.from(AIR_QUALITY_LAYER)
+				.join(GRID_DEFINITION).on(AIR_QUALITY_LAYER.GRID_DEFINITION_ID.eq(GRID_DEFINITION.ID))
+				.leftJoin(AIR_QUALITY_LAYER_METRICS).on(AIR_QUALITY_LAYER_METRICS.AIR_QUALITY_LAYER_ID.eq(AIR_QUALITY_LAYER.ID))
+				.leftJoin(POLLUTANT_METRIC).on(POLLUTANT_METRIC.ID.eq(AIR_QUALITY_LAYER_METRICS.METRIC_ID))
+				.where(AIR_QUALITY_LAYER.ID.eq(ds.getBaselineAqLayerId()))
+				.fetchAny();
+
+		String pollutantName = baseline == null ? "" : PollutantApi.getPollutantName(baseline.value3());
+		String metricName = "";
+		try {
+			if (baseline != null && baseline.value6() != null) {
+				Record1<String> metric = create.select(POLLUTANT_METRIC.NAME)
+						.from(POLLUTANT_METRIC)
+						.where(POLLUTANT_METRIC.ID.eq(baseline.value6()))
+						.fetchOne();
+				metricName = metric == null ? "" : metric.value1();
+			}
+		} catch (Exception e) {
+			metricName = "";
+		}
+
+		com.fasterxml.jackson.databind.node.ObjectNode out = objectMapper.createObjectNode();
+		out.put("resultDatasetId", id);
+		out.put("taskUuid", ds.getTaskUuid());
+		out.put("taskName", ds.getName());
+		out.put("pollutantName", pollutantName);
+		out.put("prePolicyName", baseline == null ? "" : baseline.value2());
+		out.put("aqGridDefinitionName", baseline == null ? "" : baseline.get("aq_grid_definition_name", String.class));
+		out.put("taskMetricName", metricName);
+		out.put("populationDatasetId", ds.getPopulationDatasetId());
+		out.put("populationYear", ds.getPopulationYear());
+		out.put("scenarioName", AirQualityApi.getAirQualityLayerName(ds.getScenarioAqLayerId()));
+
+		response.type("application/json");
+		return out;
 	}
 	
 	/**
