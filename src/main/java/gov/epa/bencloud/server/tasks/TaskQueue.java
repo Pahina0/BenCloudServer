@@ -29,6 +29,7 @@ import gov.epa.bencloud.api.HIFApi;
 import gov.epa.bencloud.server.database.JooqUtil;
 import gov.epa.bencloud.server.tasks.model.Task;
 import gov.epa.bencloud.server.util.ParameterUtil;
+import gov.epa.bencloud.server.websocket.TaskNotificationWebSocket;
 import spark.Request;
 import spark.Response;
 
@@ -161,21 +162,37 @@ public class TaskQueue {
 				} else {
 					Record record = result.get(0);
 
-					DSL.using(ctx).update(TASK_QUEUE)
-					.set(TASK_QUEUE.TASK_PERCENTAGE, percentage)
-					.set(TASK_QUEUE.TASK_MESSAGE, message)
-					.where(TASK_QUEUE.TASK_UUID.eq(taskUuid))
-					.execute();
-				}
-				return taskUuid;
-			});
+			DSL.using(ctx).update(TASK_QUEUE)
+			.set(TASK_QUEUE.TASK_PERCENTAGE, percentage)
+			.set(TASK_QUEUE.TASK_MESSAGE, message)
+			.where(TASK_QUEUE.TASK_UUID.eq(taskUuid))
+			.execute();
+			}
+		return taskUuid;
+		});
 
-		} catch (Exception e) {
-			log.error("Error updating task", e);
-		} finally {
+	} catch (Exception e) {
+		log.error("Error updating task", e);
+	} finally {
 
-		}
 	}
+
+	try {
+		Result<Record> result = DSL.using(JooqUtil.getJooqConfiguration()).select(TASK_QUEUE.TASK_BATCH_ID)
+			.from(TASK_QUEUE)
+			.where(TASK_QUEUE.TASK_UUID.eq(taskUuid))
+			.fetch();
+
+		if (result.size() == 1) {
+			Integer batchId = result.get(0).getValue(TASK_QUEUE.TASK_BATCH_ID);
+			if (batchId != null) {
+				TaskNotificationWebSocket.notifyTaskProgress(batchId.toString(), taskUuid, percentage, message);
+			}
+		}
+	} catch (Exception e) {
+		log.error("Error sending WebSocket progress notification", e);
+	}
+}
 
 	public static void updateTaskParameters(String taskUuid, String parameters) {
 

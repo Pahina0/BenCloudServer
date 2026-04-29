@@ -35,6 +35,7 @@ import gov.epa.bencloud.server.database.JooqUtil;
 import gov.epa.bencloud.server.tasks.model.Task;
 import gov.epa.bencloud.server.util.DataUtil;
 import gov.epa.bencloud.server.util.ParameterUtil;
+import gov.epa.bencloud.server.websocket.TaskNotificationWebSocket;
 import spark.Request;
 import spark.Response;
 
@@ -124,11 +125,21 @@ public class TaskComplete {
 							task.getBatchId())
 					.execute();
 
-					DSL.using(ctx).delete(TASK_QUEUE)
-					.where(TASK_QUEUE.TASK_UUID.eq(task.getUuid()))
-					.execute();
+			DSL.using(ctx).delete(TASK_QUEUE)
+			.where(TASK_QUEUE.TASK_UUID.eq(task.getUuid()))
+			.execute();
 
-					if(taskCompleteMessage.equalsIgnoreCase("task failed")) {
+			try {
+				TaskNotificationWebSocket.notifyBatchTaskComplete(
+					task.getBatchId().toString(),
+					taskSuccessful,
+					taskCompleteMessage
+				);
+			} catch (Exception e) {
+				log.error("Error sending WebSocket notification for batch task completion", e);
+			}
+
+			if(taskCompleteMessage.equalsIgnoreCase("task failed")) {
 						Result<Record> childTasks = DSL.using(JooqUtil.getJooqConfiguration()).select()
 						.from(TASK_QUEUE)
 						.where(TASK_QUEUE.TASK_PARENT_UUID.equal(task.getUuid())) 

@@ -19,6 +19,7 @@ import gov.epa.bencloud.server.jobs.JobsUtil;
 import gov.epa.bencloud.server.routes.ApiRoutes;
 import gov.epa.bencloud.server.tasks.TaskWorker;
 import gov.epa.bencloud.server.util.ApplicationUtil;
+import gov.epa.bencloud.server.websocket.WebSocketServer;
 import spark.Request;
 import spark.Service;
 import spark.Spark;
@@ -131,8 +132,11 @@ public class BenCloudServer {
 		// CrosswalksApi.calculateAreaWeights(18, 28);
 
 		new ApiRoutes(benCloudService);
-		
+
 		JobsUtil.startJobScheduler();
+
+		// Initialize WebSocket server for task notifications
+		WebSocketServer.initWebSocket(8081);
 	
 		// TESTING
 	    Iterator it = DataStoreFinder.getAvailableDataStores();

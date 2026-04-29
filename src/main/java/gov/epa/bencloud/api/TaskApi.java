@@ -772,11 +772,17 @@ public class TaskApi {
 						return CoreApi.getErrorResponse(request, response, 400, "Unable to serialize task scenario");
 					}
 				}
-			}
 		}
+	}
 
-	
-		return CoreApi.getSuccessResponse(request, response, 200, "Task was submitted");
+		// Create response JSON with batch task ID
+		ObjectMapper responseMapper = new ObjectMapper();
+		ObjectNode responseNode = responseMapper.createObjectNode();
+		responseNode.put("message", "Task was submitted");
+		responseNode.put("batchTaskId", batchTaskId);
+		response.type("application/json");
+		response.status(200);
+		return responseNode.toString();
 	}
 
 

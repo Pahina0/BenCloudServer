@@ -17,6 +17,7 @@ import gov.epa.bencloud.server.tasks.TaskComplete;
 import gov.epa.bencloud.server.tasks.TaskQueue;
 import gov.epa.bencloud.server.tasks.model.Task;
 import gov.epa.bencloud.server.util.ApplicationUtil;
+import gov.epa.bencloud.server.websocket.TaskNotificationWebSocket;
 import gov.epa.bencloud.server.jobs.KubernetesUtil;
 import spark.Service;
 
@@ -767,14 +768,12 @@ return PopulationApi.postPopulationData(request, response, getUserProfile(reques
 		 * PARAMETERS:
 		 *  :id
 		 */
-		service.get(apiPrefix + "/task-complete/:id", (request, response) -> {
-			return TaskApi.getExportFileID(request, response, getUserProfile(request, response));
-		});
-		
-		
-		
+	service.get(apiPrefix + "/task-complete/:id", (request, response) -> {
+		return TaskApi.getExportFileID(request, response, getUserProfile(request, response));
+	});
 
-	}
+
+ }
 
 		/*
 		 * The following are temporary calls the facilitate testing. They will be removed in the future.
