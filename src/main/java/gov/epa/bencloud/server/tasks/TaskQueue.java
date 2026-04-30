@@ -12,6 +12,7 @@ import java.util.Optional;
 
 import org.jooq.Condition;
 import org.jooq.Record;
+import org.jooq.Record1;
 import org.jooq.Result;
 import org.jooq.exception.DataAccessException;
 import org.jooq.impl.DSL;
@@ -178,13 +179,14 @@ public class TaskQueue {
 	}
 
 	try {
-		Result<Record> result = DSL.using(JooqUtil.getJooqConfiguration()).select(TASK_QUEUE.TASK_BATCH_ID)
-			.from(TASK_QUEUE)
-			.where(TASK_QUEUE.TASK_UUID.eq(taskUuid))
-			.fetch();
+		Record1<Integer> result = DSL.using(JooqUtil.getJooqConfiguration())
+				.select(TASK_QUEUE.TASK_BATCH_ID)
+				.from(TASK_QUEUE)
+				.where(TASK_QUEUE.TASK_UUID.eq(taskUuid))
+				.fetchOne();
 
-		if (result.size() == 1) {
-			Integer batchId = result.get(0).getValue(TASK_QUEUE.TASK_BATCH_ID);
+		if (result != null) {
+			Integer batchId = result.value1();
 			if (batchId != null) {
 				TaskNotificationWebSocket.notifyTaskProgress(batchId.toString(), taskUuid, percentage, message);
 			}

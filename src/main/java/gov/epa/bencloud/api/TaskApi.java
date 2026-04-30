@@ -389,8 +389,11 @@ public class TaskApi {
 				.select(AIR_QUALITY_LAYER_METRICS.METRIC_ID)
 				.from(AIR_QUALITY_LAYER_METRICS)
 				.where(AIR_QUALITY_LAYER_METRICS.AIR_QUALITY_LAYER_ID.eq(baselineId))
-				.fetchOne();
+				.fetchAny();
 
+		if (baselineMetricRecord == null || baselineMetricRecord.value1() == null) {
+			return CoreApi.getErrorResponse(request, response, 400, "No baseline metric found for air quality layer " + baselineId);
+		}
 		Integer baselineMetricId = baselineMetricRecord.value1();
 		
 		
@@ -423,7 +426,7 @@ public class TaskApi {
 				.leftJoin(TIMING_TYPE).on(HEALTH_IMPACT_FUNCTION.TIMING_ID.eq(TIMING_TYPE.ID))
 				.where(HEALTH_IMPACT_FUNCTION_GROUP.ID.in(hifGroupList)
 						.and(HEALTH_IMPACT_FUNCTION.POLLUTANT_ID.eq(pollutantId))
-						.and(HEALTH_IMPACT_FUNCTION.METRIC_ID.contains(baselineMetricId)
+						.and(HEALTH_IMPACT_FUNCTION.METRIC_ID.eq(baselineMetricId)
 						.and(HEALTH_IMPACT_FUNCTION.ARCHIVED.eq((short) 0)))
 						)
 				.orderBy(HEALTH_IMPACT_FUNCTION_GROUP.NAME)
