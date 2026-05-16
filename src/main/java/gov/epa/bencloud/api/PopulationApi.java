@@ -726,12 +726,12 @@ DSL.using(JooqUtil.getJooqConfiguration())
 
 // Update sequences
 DSL.using(JooqUtil.getJooqConfiguration())
-.alterSequenceIfExists(DSL.sequence("data.population_dataset_id_seq"))
+.alterSequenceIfExists(DSL.sequence(DSL.name("data", "population_dataset_id_seq")))
 .restartWith(BigInteger.valueOf(datasetId + 1))
 .execute();
 
 DSL.using(JooqUtil.getJooqConfiguration())
-.alterSequenceIfExists(DSL.sequence("data.population_entry_id_seq"))
+.alterSequenceIfExists(DSL.sequence(DSL.name("data", "population_entry_id_seq")))
 .restartWith(BigInteger.valueOf(entryId))
 .execute();
 
