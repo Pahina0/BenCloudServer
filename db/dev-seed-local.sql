@@ -47,6 +47,14 @@ VALUES (1, 3)
 ON CONFLICT DO NOTHING;
 
 -- 4) Minimal dataset tied to example AQ grid (69)
+-- Ensure grid 69 has its table name set (sometimes missing from patches)
+UPDATE data.grid_definition SET table_name = 'grids.grid_69' WHERE id = 69 AND table_name IS NULL;
+
+-- Fix example AQ surfaces to match standard health impact functions
+-- PM2.5 example surfaces (3, 4) should use metric 11 (Daily Index) instead of 1 (D24HourMean)
+UPDATE data.air_quality_cell SET metric_id = 11 WHERE air_quality_layer_id IN (3, 4) AND metric_id = 1;
+UPDATE data.air_quality_layer_metrics SET metric_id = 11 WHERE air_quality_layer_id IN (3, 4) AND metric_id = 1;
+
 INSERT INTO data.population_dataset (id, name, pop_config_id, grid_definition_id, apply_growth)
 VALUES (1, 'USA Population TEST DATA', 1, 69, 0)
 ON CONFLICT (id) DO UPDATE
@@ -142,25 +150,39 @@ BEGIN
   END IF;
 
   -- 73 -> 69
-  INSERT INTO data.crosswalk_entry(crosswalk_id, source_grid_cell_id, target_grid_cell_id, percentage)
-  SELECT cw_73_69, v.grid_cell_id, target_cell, 1.0
+  INSERT INTO data.crosswalk_entry(crosswalk_id, source_grid_cell_id, target_grid_cell_id, percentage, target_col, target_row)
+  SELECT cw_73_69, v.grid_cell_id, c.grid_cell_id, 1.0, c.grid_col, c.grid_row
   FROM (
     SELECT DISTINCT pv.grid_cell_id
     FROM data.population_value pv
     JOIN data.population_entry pe ON pe.id=pv.pop_entry_id
     WHERE pe.pop_dataset_id=100
   ) v
+  CROSS JOIN (
+    SELECT DISTINCT c.grid_cell_id, c.grid_col, c.grid_row
+    FROM data.air_quality_cell c
+    JOIN data.air_quality_layer l ON l.id=c.air_quality_layer_id
+    WHERE l.grid_definition_id=69
+    LIMIT 1
+  ) c
   ON CONFLICT DO NOTHING;
 
   -- 69 -> 73
-  INSERT INTO data.crosswalk_entry(crosswalk_id, source_grid_cell_id, target_grid_cell_id, percentage)
-  SELECT cw_69_73, target_cell, v.grid_cell_id, 1.0
+  INSERT INTO data.crosswalk_entry(crosswalk_id, source_grid_cell_id, target_grid_cell_id, percentage, source_col, source_row)
+  SELECT cw_69_73, c.grid_cell_id, v.grid_cell_id, 1.0, c.grid_col, c.grid_row
   FROM (
     SELECT DISTINCT pv.grid_cell_id
     FROM data.population_value pv
     JOIN data.population_entry pe ON pe.id=pv.pop_entry_id
     WHERE pe.pop_dataset_id=100
+    LIMIT 1
   ) v
+  CROSS JOIN (
+    SELECT DISTINCT c.grid_cell_id, c.grid_col, c.grid_row
+    FROM data.air_quality_cell c
+    JOIN data.air_quality_layer l ON l.id=c.air_quality_layer_id
+    WHERE l.grid_definition_id=69
+  ) c
   ON CONFLICT DO NOTHING;
 END $$;
 
@@ -191,10 +213,10 @@ BEGIN
   SELECT id INTO cw_18_69 FROM data.crosswalk_dataset WHERE source_grid_id=18 AND target_grid_id=69 LIMIT 1;
 
   -- 69 -> 18 (needed by data.get_variable when output grid is 69 and variable source is 18)
-  INSERT INTO data.crosswalk_entry (crosswalk_id, source_grid_cell_id, target_grid_cell_id, percentage)
-  SELECT cw_69_18, c.grid_cell_id, c.grid_cell_id, 1.0
+  INSERT INTO data.crosswalk_entry (crosswalk_id, source_grid_cell_id, target_grid_cell_id, percentage, source_col, source_row, target_col, target_row)
+  SELECT cw_69_18, c.grid_cell_id, c.grid_cell_id, 1.0, c.grid_col, c.grid_row, c.grid_col, c.grid_row
   FROM (
-    SELECT DISTINCT c.grid_cell_id
+    SELECT DISTINCT c.grid_cell_id, c.grid_col, c.grid_row
     FROM data.air_quality_cell c
     JOIN data.air_quality_layer l ON l.id=c.air_quality_layer_id
     WHERE l.grid_definition_id=69
@@ -202,10 +224,10 @@ BEGIN
   ON CONFLICT DO NOTHING;
 
   -- 18 -> 69 (reverse mapping, in case other routines need it)
-  INSERT INTO data.crosswalk_entry (crosswalk_id, source_grid_cell_id, target_grid_cell_id, percentage)
-  SELECT cw_18_69, c.grid_cell_id, c.grid_cell_id, 1.0
+  INSERT INTO data.crosswalk_entry (crosswalk_id, source_grid_cell_id, target_grid_cell_id, percentage, source_col, source_row, target_col, target_row)
+  SELECT cw_18_69, c.grid_cell_id, c.grid_cell_id, 1.0, c.grid_col, c.grid_row, c.grid_col, c.grid_row
   FROM (
-    SELECT DISTINCT c.grid_cell_id
+    SELECT DISTINCT c.grid_cell_id, c.grid_col, c.grid_row
     FROM data.air_quality_cell c
     JOIN data.air_quality_layer l ON l.id=c.air_quality_layer_id
     WHERE l.grid_definition_id=69
@@ -217,4 +239,33 @@ END $$;
 INSERT INTO data.t_pop_dataset_year (pop_dataset_id, pop_year)
 VALUES (1, 2020)
 ON CONFLICT DO NOTHING;
+
+
+-- 6) Missing incidence data for example HIFs (ID 10001, 10003)
+INSERT INTO data.incidence_entry (id, incidence_dataset_id, year, endpoint_group_id, endpoint_id, race_id, gender_id, start_age, end_age, prevalence, ethnicity_id)
+VALUES 
+(10004, 100, 2025, 12, 50, 5, 3, 25, 99, false, 3), -- Mortality for HIF 10001
+(10005, 100, 2025, 10, 22, 5, 3, 0, 18, false, 3)    -- Asthma for HIF 10003
+ON CONFLICT (id) DO UPDATE SET
+    start_age = EXCLUDED.start_age,
+    end_age = EXCLUDED.end_age,
+    endpoint_id = EXCLUDED.endpoint_id;
+
+INSERT INTO data.incidence_value (incidence_entry_id, grid_cell_id, grid_col, grid_row, value)
+SELECT 
+    ie.id as incidence_entry_id,
+    ((g.col::bigint + g.row::bigint) * (g.col::bigint + g.row::bigint + 1) * 0.5) + g.row::bigint as grid_cell_id,
+    g.col as grid_col,
+    g.row as grid_row,
+    CASE
+        WHEN ie.endpoint_id = 50 THEN 0.001 + (random() * 0.005)
+        ELSE 0.01 + (random() * 0.03)
+    END as value
+FROM data.incidence_entry ie
+CROSS JOIN (SELECT DISTINCT col, row FROM grids.grid_69 WHERE col <= 10 AND row <= 10) g
+WHERE ie.id IN (10004, 10005)
+ON CONFLICT DO NOTHING;
+
+-- Also fix the existing Entry 10003 which has the wrong age range for the example HIF
+UPDATE data.incidence_entry SET start_age = 0, end_age = 18 WHERE id = 10003 AND endpoint_id = 22;
 

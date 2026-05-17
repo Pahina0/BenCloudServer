@@ -248,7 +248,7 @@ public class TaskComplete {
 
 				boolean batchSuccessful = true;
 				LocalDateTime batchCompletedDate = LocalDateTime.MIN;
-				LocalDateTime batchStartedDate = LocalDateTime.now();
+				LocalDateTime batchStartedDate = LocalDateTime.MAX;
 
 				for (Record record : result) {
 
@@ -258,78 +258,44 @@ public class TaskComplete {
 					task.put("task_type", record.getValue(TASK_COMPLETE.TASK_TYPE));
 					task.put("task_description", record.getValue(TASK_COMPLETE.TASK_DESCRIPTION));
 					task.put("task_uuid", record.getValue(TASK_COMPLETE.TASK_UUID));
-					try {
-						task.put("task_submitted_date", record.getValue(TASK_COMPLETE.TASK_SUBMITTED_DATE).atZone(zoneId).format(formatter));
-					} catch (Exception e) {
-						task.put("task_submitted_date", "");
-						//e.printStackTrace();
-					}
-					try {
-						task.put("task_started_date", record.getValue(TASK_COMPLETE.TASK_STARTED_DATE).atZone(zoneId).format(formatter));
-					} catch (Exception e) {
-						task.put("task_started_date", "");
-						//e.printStackTrace();
-					}
-
-
-					try {
-						if((record.getValue(TASK_COMPLETE.TASK_STARTED_DATE)).isBefore(batchStartedDate)) {
-							batchStartedDate = record.getValue(TASK_COMPLETE.TASK_STARTED_DATE);
-						}						
-					}
-					catch (Exception e){
-						//batchStartedDate = LocalDateTime.now();
-					}
 					
+					LocalDateTime submittedDate = record.getValue(TASK_COMPLETE.TASK_SUBMITTED_DATE);
+					task.put("task_submitted_date", submittedDate == null ? "" : submittedDate.atZone(zoneId).format(formatter));
 
+					LocalDateTime startedDate = record.getValue(TASK_COMPLETE.TASK_STARTED_DATE);
+					task.put("task_started_date", startedDate == null ? "" : startedDate.atZone(zoneId).format(formatter));
 
-					try {
-						task.put("task_completed_date", record.getValue(TASK_COMPLETE.TASK_COMPLETED_DATE).atZone(zoneId).format(formatter));
-					} catch (Exception e) {
-						task.put("task_completed_date", "");
-						// e.printStackTrace();
+					if(startedDate != null && startedDate.isBefore(batchStartedDate)) {
+						batchStartedDate = startedDate;
 					}
 
-					if((record.getValue(TASK_COMPLETE.TASK_COMPLETED_DATE)).isAfter(batchCompletedDate)) {
-						batchCompletedDate = record.getValue(TASK_COMPLETE.TASK_COMPLETED_DATE);
+					LocalDateTime completedDate = record.getValue(TASK_COMPLETE.TASK_COMPLETED_DATE);
+					task.put("task_completed_date", completedDate == null ? "" : completedDate.atZone(zoneId).format(formatter));
+
+					if(completedDate != null && completedDate.isAfter(batchCompletedDate)) {
+						batchCompletedDate = completedDate;
 					}
 					
 					task.put("task_user_id", record.getValue(TASK_COMPLETE.USER_ID));
 					
 					wrappedObject = mapper.createObjectNode();
-					try {
-						wrappedObject.put("task_wait_time_display", DataUtil.getHumanReadableTime(
-								record.getValue(TASK_COMPLETE.TASK_SUBMITTED_DATE), 
-								record.getValue(TASK_COMPLETE.TASK_STARTED_DATE)));
-						wrappedObject.put("task_wait_time_seconds", 
-								ChronoUnit.SECONDS.between(record.getValue(TASK_COMPLETE.TASK_SUBMITTED_DATE),
-										record.getValue(TASK_COMPLETE.TASK_STARTED_DATE)));
-					} catch (Exception e) {
-						
-						// e.printStackTrace();
+					if (submittedDate != null && startedDate != null) {
+						wrappedObject.put("task_wait_time_display", DataUtil.getHumanReadableTime(submittedDate, startedDate));
+						wrappedObject.put("task_wait_time_seconds", ChronoUnit.SECONDS.between(submittedDate, startedDate));
 					}
 					task.set("task_wait_time", wrappedObject);
 
 					wrappedObject = mapper.createObjectNode();
-					try {
-						wrappedObject.put("task_execution_time_display", DataUtil.getHumanReadableTime(
-								record.getValue(TASK_COMPLETE.TASK_STARTED_DATE), 
-								record.getValue(TASK_COMPLETE.TASK_COMPLETED_DATE)));
-						wrappedObject.put("task_execution_time_seconds", 
-								ChronoUnit.SECONDS.between(record.getValue(TASK_COMPLETE.TASK_STARTED_DATE),
-										record.getValue(TASK_COMPLETE.TASK_COMPLETED_DATE)));
-					} catch (Exception e) {
-						// e.printStackTrace();
+					if (startedDate != null && completedDate != null) {
+						wrappedObject.put("task_execution_time_display", DataUtil.getHumanReadableTime(startedDate, completedDate));
+						wrappedObject.put("task_execution_time_seconds", ChronoUnit.SECONDS.between(startedDate, completedDate));
 					}
 					task.set("task_execution_time", wrappedObject);
 
-					try {
-						task.put("task_elapsed_time", DataUtil.getHumanReadableTime(
-								record.getValue(TASK_COMPLETE.TASK_STARTED_DATE), 
-								record.getValue(TASK_COMPLETE.TASK_COMPLETED_DATE)));
-					} catch (Exception e) {
+					if (startedDate != null && completedDate != null) {
+						task.put("task_elapsed_time", DataUtil.getHumanReadableTime(startedDate, completedDate));
+					} else {
 						task.put("task_elapsed_time", "");
-						// e.printStackTrace();
 					}
 					
 					task.put("task_successful", record.getValue(TASK_COMPLETE.TASK_SUCCESSFUL));
@@ -345,8 +311,8 @@ public class TaskComplete {
 				if(result.isNotEmpty()) {
 					batchTask.set("tasks", tasks);
 					batchTask.put("batch_task_successful", batchSuccessful);
-					batchTask.put("batch_completed_date", batchCompletedDate.atZone(zoneId).format(formatter));
-					batchTask.put("batch_execution_time", DataUtil.getHumanReadableTime(
+					batchTask.put("batch_completed_date", batchCompletedDate.equals(LocalDateTime.MIN) ? "" : batchCompletedDate.atZone(zoneId).format(formatter));
+					batchTask.put("batch_execution_time", (batchStartedDate.equals(LocalDateTime.MAX) || batchCompletedDate.equals(LocalDateTime.MIN)) ? "" : DataUtil.getHumanReadableTime(
 								batchStartedDate, 
 								batchCompletedDate));
 					batchTasks.add(batchTask);

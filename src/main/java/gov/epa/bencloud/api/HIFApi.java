@@ -532,7 +532,11 @@ public class HIFApi {
 
 		//We can't get the grid cell id from GET_HIF_RESULTS so we'll add it here
 		for(Record res : hifRecords) {
-			res.set(DSL.field("grid_cell_id", Long.class), ApiUtil.getCellId(res.get(1, Integer.class), res.get(2, Integer.class)));
+			Integer col = res.get(1, Integer.class);
+			Integer row = res.get(2, Integer.class);
+			if (col != null && row != null) {
+				res.set(DSL.field("grid_cell_id", Long.class), ApiUtil.getCellId(col, row));
+			}
 		}
 		
 		

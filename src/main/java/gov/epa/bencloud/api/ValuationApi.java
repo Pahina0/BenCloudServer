@@ -155,7 +155,7 @@ public class ValuationApi {
 		
 		
 		List<Integer> hifIds = (hifIdsParam == null || hifIdsParam.equals("")) ? null : Stream.of(hifIdsParam.split(",")).mapToInt(Integer::parseInt).boxed().collect(Collectors.toList());
-		List<Integer> vfIds = (vfIdsParam == null || vfIdsParam.equals(""))? null : Stream.of(hifIdsParam.split(",")).mapToInt(Integer::parseInt).boxed().collect(Collectors.toList());
+		List<Integer> vfIds = (vfIdsParam == null || vfIdsParam.equals(""))? null : Stream.of(vfIdsParam.split(",")).mapToInt(Integer::parseInt).boxed().collect(Collectors.toList());
 		
 //		try {
 //			if(gridId == 0) {

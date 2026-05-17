@@ -52,13 +52,23 @@ public class CrosswalksApi {
 			String g1Name = g1.value1();
 			String g2Name = g2.value1();
 
+			if (g1Name == null || g2Name == null) {
+				log.error("Grid table name is null for grid " + (g1Name == null ? grid_id1 : grid_id2));
+				return false;
+			}
+
 			// get the grid SRID
-			Integer g1Srid = dslContext
+			Record1<Integer> sridRecord = dslContext
 					.select(DSL.field("st_srid(geom)",Integer.class))
 					.from(g1Name)
 					.limit(1)
-					.fetchOne()
-					.value1();
+					.fetchOne();
+			
+			if (sridRecord == null) {
+				log.error("Could not determine SRID for grid table " + g1Name);
+				return false;
+			}
+			Integer g1Srid = sridRecord.value1();
 			
 			// create a table with the required fields and crosswalks for insertion into crosswalk entry table
 			SelectConditionStep<Record8<Integer, Integer, Integer, Long, Integer, Integer, Long, Double>> fwQuery = dslContext

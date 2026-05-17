@@ -325,6 +325,8 @@ public class ApiUtil {
 		
 	}
 	
+	private static Boolean hasLeaderPid = null;
+
 	/**
 	 * @param taskUuid
 	 * @return
@@ -334,8 +336,19 @@ public class ApiUtil {
 		try {
 			DSLContext ctx = DSL.using(JooqUtil.getJooqConfiguration("BenMAP JDBC"));
 
+			if (hasLeaderPid == null) {
+				synchronized (ApiUtil.class) {
+					if (hasLeaderPid == null) {
+						hasLeaderPid = ctx.fetchExists(ctx.selectOne()
+								.from("pg_attribute")
+								.where(DSL.field("attrelid").eq(DSL.field("'pg_stat_activity'::regclass")))
+								.and(DSL.field("attname").eq("leader_pid")));
+					}
+				}
+			}
+
 			Result<Record1<Integer>> pidRecords;
-			try {
+			if (hasLeaderPid) {
 				// Newer Postgres versions have leader_pid (parallel query leader).
 				pidRecords = ctx
 						.select(DSL.field("pid", Integer.class))
@@ -344,7 +357,7 @@ public class ApiUtil {
 						.and(DSL.field("leader_pid").isNull()) // only cancel leader queries
 						.and(DSL.field("state").eq("active"))
 						.fetch();
-			} catch (org.jooq.exception.DataAccessException dae) {
+			} else {
 				// Older Postgres versions don't expose leader_pid; fall back to cancelling active queries by application_name.
 				pidRecords = ctx
 						.select(DSL.field("pid", Integer.class))

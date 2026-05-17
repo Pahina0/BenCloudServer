@@ -448,7 +448,7 @@ return PopulationApi.postPopulationData(request, response, getUserProfile(reques
 				return CoreApi.getErrorResponseInvalidId(request, response);
 			}
 
-			return null;
+			return "";
 		});
 		
 		/*
@@ -467,7 +467,7 @@ return PopulationApi.postPopulationData(request, response, getUserProfile(reques
 				return CoreApi.getErrorResponseInvalidId(request, response);
 			}
 
-			return null;
+			return "";
 		});
 		*/
 		
@@ -511,7 +511,7 @@ return PopulationApi.postPopulationData(request, response, getUserProfile(reques
 				return CoreApi.getErrorResponseInvalidId(request, response);
 			}
 
-			return null;
+			return "";
 
 		});
 
@@ -529,7 +529,7 @@ return PopulationApi.postPopulationData(request, response, getUserProfile(reques
 				return CoreApi.getErrorResponseInvalidId(request, response);
 			}
 
-			return null;
+			return "";
 		});
 		*/
 		
@@ -555,7 +555,7 @@ return PopulationApi.postPopulationData(request, response, getUserProfile(reques
 				return CoreApi.getErrorResponseInvalidId(request, response);
 			}
 
-			return null;
+			return "";
 		});
 		
 		/*
@@ -575,7 +575,7 @@ return PopulationApi.postPopulationData(request, response, getUserProfile(reques
 				return CoreApi.getErrorResponseInvalidId(request, response);
 			}
 
-			return null;
+			return "";
 		});
 		*/
 		
@@ -646,7 +646,7 @@ return PopulationApi.postPopulationData(request, response, getUserProfile(reques
 				return CoreApi.getErrorResponseInvalidId(request, response);
 			}
 
-			return null;
+			return "";
 		});
 		
 		/*

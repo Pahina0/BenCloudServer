@@ -368,20 +368,25 @@ public class TaskQueue {
 							task.put("task_name", record.getValue(TASK_QUEUE.TASK_NAME));
 							//task.put("task_description", record.getValue(TASK_QUEUE.TASK_DESCRIPTION));
 							task.put("task_uuid", record.getValue(TASK_QUEUE.TASK_UUID));
-							task.put("task_submitted_date", record.getValue(TASK_QUEUE.TASK_SUBMITTED_DATE).atZone(zoneId).format(formatter));
+							LocalDateTime submittedDate = record.getValue(TASK_QUEUE.TASK_SUBMITTED_DATE);
+							task.put("task_submitted_date", submittedDate == null ? "" : submittedDate.atZone(zoneId).format(formatter));
 							task.put("task_type", record.getValue(TASK_QUEUE.TASK_TYPE));
 							task.put("task_user_id", record.getValue(TASK_QUEUE.USER_ID));
 
 							wrappedObject = mapper.createObjectNode();
 
 							if (record.getValue(TASK_QUEUE.TASK_IN_PROCESS)) {
-
-								task.put("task_status_message", "Started at " + record.getValue(TASK_QUEUE.TASK_STARTED_DATE).atZone(zoneId).format(formatter) );
-								task.putRawValue("task_progress_message", new RawValue(record.getValue(TASK_QUEUE.TASK_MESSAGE)));
-
-								if(batchStartedDate == null || (record.getValue(TASK_COMPLETE.TASK_STARTED_DATE)).isBefore(batchStartedDate)) {
-									batchStartedDate = record.getValue(TASK_COMPLETE.TASK_STARTED_DATE);
+								LocalDateTime startedDate = record.getValue(TASK_QUEUE.TASK_STARTED_DATE);
+								if (startedDate != null) {
+									task.put("task_status_message", "Started at " + startedDate.atZone(zoneId).format(formatter) );
+									if(batchStartedDate == null || startedDate.isBefore(batchStartedDate)) {
+										batchStartedDate = startedDate;
+									}
+								} else {
+									task.put("task_status_message", "Started");
 								}
+								
+								task.putRawValue("task_progress_message", new RawValue(record.getValue(TASK_QUEUE.TASK_MESSAGE)));
 								
 								//task.put("task_wait_time", DataUtil.getHumanReadableTime(
 								//		record.getValue(TASK_QUEUE.TASK_SUBMITTED_DATE), 
@@ -427,7 +432,8 @@ public class TaskQueue {
 								String taskStatusMessage = "";
 								String taskProgressMessage = "";
 								if(record.getValue(TASK_COMPLETE.TASK_SUCCESSFUL)){
-									taskStatusMessage = "Completed at " + record.getValue(TASK_COMPLETE.TASK_COMPLETED_DATE).atZone(zoneId).format(formatter);
+									LocalDateTime completedDate = record.getValue(TASK_COMPLETE.TASK_COMPLETED_DATE);
+									taskStatusMessage = "Completed at " + (completedDate == null ? "" : completedDate.atZone(zoneId).format(formatter));
 									taskProgressMessage = "Complete";
 								}
 								else {
@@ -439,12 +445,18 @@ public class TaskQueue {
 								task.put("task_name", record.getValue(TASK_COMPLETE.TASK_NAME));
 								//task.put("task_description", record.getValue(TASK_COMPLETE.TASK_DESCRIPTION));
 								task.put("task_uuid", record.getValue(TASK_COMPLETE.TASK_UUID));
-								task.put("task_submitted_date", record.getValue(TASK_COMPLETE.TASK_SUBMITTED_DATE).atZone(zoneId).format(formatter));
+								LocalDateTime compSubmittedDate = record.getValue(TASK_COMPLETE.TASK_SUBMITTED_DATE);
+								task.put("task_submitted_date", compSubmittedDate == null ? "" : compSubmittedDate.atZone(zoneId).format(formatter));
 								task.put("task_type", record.getValue(TASK_COMPLETE.TASK_TYPE));
 								task.put("task_status_message", taskStatusMessage);
 								task.put("task_progress_message", taskProgressMessage);
 								task.put("task_percentage", 100);
 								task.put("task_user_id", record.getValue(TASK_COMPLETE.USER_ID));
+
+								LocalDateTime startedDate = record.getValue(TASK_COMPLETE.TASK_STARTED_DATE);
+								if(startedDate != null && (batchStartedDate == null || startedDate.isBefore(batchStartedDate))) {
+									batchStartedDate = startedDate;
+								}
 
 								wrappedObject = mapper.createObjectNode();
 
